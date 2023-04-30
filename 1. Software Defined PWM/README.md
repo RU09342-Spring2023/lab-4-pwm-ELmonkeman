@@ -1,32 +1,57 @@
-# Software PWM
-Most microprocessors will have a Timer module, but depending on the device, some may not come with pre-built PWM modules. Instead, you may have to utilize software techniques to synthesize PWM on your own.
+#include <msp430.h>
 
-## Task
-You need to generate a 1kHz PWM signal with a duty cycle between 0% and 100%. Upon the processor starting up, you should PWM both of the on-board LEDs at a 50% duty cycle. Upon pressing the on-board buttons, the duty cycle of the LEDs should increase by 10%, based on which button you press. Once you have reached 100%, your duty cycle should go back to 0% on the next button press.
- - Button 2.1 Should control LED 1.0
- - Button 4.3 should control LED 6.6
+// Constants for PWM period and duty cycle increments
+#define PWM_PERIOD 1000  // 1kHz PWM frequency
+#define DUTY_CYCLE_INC 100  // Increase duty cycle by 10%
 
-## Deliverables
-You will need to upload the .c file and a README explaining your code and any design decisions made.
+// Global variables to hold duty cycle values
+unsigned int duty_cycle_led1 = 500;  // 50% duty cycle
+unsigned int duty_cycle_led2 = 500;  // 50% duty cycle
 
-### Hints
-You really, really, really, really need to hook up the output of your LED pin to an oscilloscope to make sure that the duty cycle is accurate. Also, since you are going to be doing a lot of initialization, it would be helpful for all persons involved if you created your main function like:
+int main(void) {
+    WDTCTL = WDTPW | WDTHOLD;  // Stop watchdog timer
 
-```c
-int main(void)
-{
-	WDTCTL = WDTPW | WDTHOLD;	// stop watchdog timer
-	LEDSetup(); // Initialize our LEDS
-	ButtonSetup();  // Initialize our button
-	TimerA0Setup(); // Initialize Timer0
-	TimerA1Setup(); // Initialize Timer1
-	__bis_SR_register(LPM0_bits + GIE);       // Enter LPM0 w/ interrupt
+    // Set up P1.0 and P6.6 as output pins for LEDs
+    P1DIR |= BIT0;
+    P6DIR |= BIT6;
+
+    // Set up P2.1 and P4.3 as input pins for buttons
+    P2DIR &= ~BIT1;
+    P4DIR &= ~BIT3;
+    P2REN |= BIT1;
+    P4REN |= BIT3;
+    P2OUT |= BIT1;
+    P4OUT |= BIT3;
+
+    // Configure timer A0 for PWM
+    TA0CTL = TASSEL_2 | MC_1 | ID_0;  // SMCLK, up mode, no prescaler
+    TA0CCR0 = PWM_PERIOD - 1;  // PWM period
+    TA0CCTL1 = OUTMOD_7;  // Reset/Set output mode for CCR1 (LED 1.0)
+    TA0CCR1 = duty_cycle_led1;  // Initial duty cycle for LED 1.0
+    TA0CCTL2 = OUTMOD_7;  // Reset/Set output mode for CCR2 (LED 6.6)
+    TA0CCR2 = duty_cycle_led2;  // Initial duty cycle for LED 6.6
+
+    // Infinite loop
+    while (1) {
+        // Check if button 2.1 is pressed
+        if ((P2IN & BIT1) == 0) {
+            // Increase duty cycle for LED 1.0
+            duty_cycle_led1 += DUTY_CYCLE_INC;
+            if (duty_cycle_led1 > 1000) {
+                duty_cycle_led1 = 0;
+            }
+            TA0CCR1 = duty_cycle_led1;  // Set new duty cycle
+            __delay_cycles(100000);  // Debounce button press
+        }
+        // Check if button 4.3 is pressed
+        if ((P4IN & BIT3) == 0) {
+            // Increase duty cycle for LED 6.6
+            duty_cycle_led2 += DUTY_CYCLE_INC;
+            if (duty_cycle_led2 > 1000) {
+                duty_cycle_led2 = 0;
+            }
+            TA0CCR2 = duty_cycle_led2;  // Set new duty cycle
+            __delay_cycles(100000);  // Debounce button press
+        }
+    }
 }
-```
-
-This way, each of the steps in initialization can be isolated for easier understanding and debugging.
-
-
-## Extra Work
-### Linear Brightness
-Much like every other things with humans, not everything we interact with we perceive as linear. For senses such as sight or hearing, certain features such as volume or brightness have a logarithmic relationship with our senses. Instead of just incrementing by 10%, try making the brightness appear to change linearly.
