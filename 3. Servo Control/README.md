@@ -1,12 +1,41 @@
-# Servo Control
-Servos can be controlled with PWM, determining which angle should be taken by how wide the duty cycle is. You will need to build a manual control for a servo using the two buttons on the development board.
+#include <msp430.h>
 
-## Task
-You can chose whichever pin you want to control your Servo (but I might recommend one with hardware PWM control). Your will use the two buttons on your development board to control the position of your servo. The button on the left side of the board should turn the servo counterclockwise, the button on the right side of the board should turn it clockwise.
+#define SERVO_PIN BIT0
+#define BUTTON_LEFT BIT1
+#define BUTTON_RIGHT BIT2
+#define PWM_PERIOD 20000
+#define SERVO_MAX_DEGREE 180
+#define SERVO_MIN_PULSE_WIDTH 1000 // microseconds
+#define SERVO_MAX_PULSE_WIDTH 2000 // microseconds
 
-The servo will have a limit to the amount of degree it can rotate, so make sure you take a look at that before coding.
+int pulse_width = SERVO_MIN_PULSE_WIDTH; // start at minimum pulse width
 
-The servo will need to be most likely powered from the power supply on the bench. If you do this, you need to make sure you connect common ground between the supply and your board. Otherwise, your system will not work or you risk damaging your board.
+void main(void) {
+    WDTCTL = WDTPW + WDTHOLD; // disable watchdog timer
+    P1DIR |= SERVO_PIN; // set SERVO_PIN as output
+    P1SEL |= SERVO_PIN; // enable PWM output on SERVO_PIN
+    TA0CCR0 = PWM_PERIOD - 1; // set PWM period
+    TA0CCTL1 = OUTMOD_7; // set PWM output mode
+    TA0CCR1 = pulse_width; // start at minimum pulse width
+    TA0CTL = TASSEL_2 + MC_1 + TACLR; // use SMCLK, up mode, clear timer
+    P1DIR &= ~(BUTTON_LEFT + BUTTON_RIGHT); // set BUTTON_LEFT and BUTTON_RIGHT as input
+    P1REN |= BUTTON_LEFT + BUTTON_RIGHT; // enable pull-up resistors on BUTTON_LEFT and BUTTON_RIGHT
+    P1OUT |= BUTTON_LEFT + BUTTON_RIGHT; // set initial value of BUTTON_LEFT and BUTTON_RIGHT to high
 
-## Deliverables
-You will need to upload the .c file and a README explaining your code and any design decisions made.
+    while (1) {
+        if (!(P1IN & BUTTON_LEFT)) { // if BUTTON_LEFT is pressed
+            if (pulse_width > SERVO_MIN_PULSE_WIDTH) { // if pulse width is not at minimum value
+                pulse_width -= 100; // decrease pulse width by 100 microseconds
+                TA0CCR1 = pulse_width; // update pulse width
+            }
+            __delay_cycles(10000); // debounce delay
+        } else if (!(P1IN & BUTTON_RIGHT)) { // if BUTTON_RIGHT is pressed
+            if (pulse_width < SERVO_MAX_PULSE_WIDTH) { // if pulse width is not at maximum value
+                pulse_width += 100; // increase pulse width by 100 microseconds
+                TA0CCR1 = pulse_width; // update pulse width
+            }
+            __delay_cycles(10000); // debounce delay
+        }
+    }
+}
+
